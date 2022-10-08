@@ -12,6 +12,7 @@ class MainWindow(QWidget):
         super().__init__()
         self.setWindowTitle('xx system')
         self.resize(1224, 450)
+        self.txt_asin = None
         # position center
         qr = self.frameGeometry()
         cp = QDesktopWidget().availableGeometry().center()
@@ -33,13 +34,15 @@ class MainWindow(QWidget):
         self.label_status = label_status = QLabel("未检测", self)
         footer_layout.addWidget(label_status)
         footer_layout.addStretch()
-        btn_reunit = QPushButton('重新初始化')
-        footer_layout.addWidget(btn_reunit)
+        btn_reset = QPushButton('重新初始化')
+        btn_reset.clicked.connect(self.event_reset_event)
+        footer_layout.addWidget(btn_reset)
         btn_recheck = QPushButton('重新检测')
         footer_layout.addWidget(btn_recheck)
         btn_delete = QPushButton('删除检测项')
         footer_layout.addWidget(btn_delete)
         btn_alert = QPushButton('SMTP报警')
+        btn_alert.clicked.connect(self.event_alert_click)
         footer_layout.addWidget(btn_alert)
         btn_proxy = QPushButton('代理设置')
         footer_layout.addWidget(btn_proxy)
@@ -129,10 +132,11 @@ class MainWindow(QWidget):
 
     def init_title(self, layout):
         form_layout = QHBoxLayout()
-        txt_asin = QLineEdit()  # 输入框
-        txt_asin.setPlaceholderText("please input")
+        self.txt_asin = QLineEdit()  # 输入框
+        self.txt_asin.setPlaceholderText("please input")
         btn_add = QPushButton("添加")
-        form_layout.addWidget(txt_asin)
+        btn_add.clicked.connect(self.event_add_click)
+        form_layout.addWidget(self.txt_asin)
         form_layout.addWidget(btn_add)
         layout.addLayout(form_layout)
 
@@ -145,6 +149,60 @@ class MainWindow(QWidget):
         header_layout.addWidget(btn_stop)
         header_layout.addStretch()
         layout.addLayout(header_layout)
+
+    def event_reset_event(self):
+        selected_row_list = self.table_widget.selectionModel().selectedRows()
+        if not selected_row_list:
+            QMessageBox.warning(self, 'error', 'not select data')
+            return
+
+        for row_obj in selected_row_list:
+            index = row_obj.row()
+            print('select index:', index)
+            cell_status = QTableWidgetItem('init')
+            cell_status.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)  #  no edit
+            self.table_widget.setItem(index, 6, cell_status)
+
+    def event_add_click(self):
+        text = self.txt_asin.text()
+        print(text)
+        if not text:
+            QMessageBox.warning(self, 'error', 'please input shop name')
+        asin, price = text.split('=')
+        price = float(price)
+        new_row_list = [asin, "", "", price, 0, 0, 0, 5]
+        current_row_count = self.table_widget.rowCount()  # current row
+        self.table_widget.insertRow(current_row_count)
+        for j, element in enumerate(new_row_list):
+            cell = QTableWidgetItem(str(element))
+            if j in [0, 4, 5, 6]:
+                cell.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)  # NO EDIT
+            self.table_widget.setItem(current_row_count, j, cell)
+        from utils.threads import NewTaskThreads
+        thread = NewTaskThreads(current_row_count, asin, self)
+        thread.success.connect(self.init_task_success_callback)
+        thread.error.connect(self.init_task_error_callback)
+        thread.start()
+
+    def event_alert_click(self):
+        from utils.diaglog import AlertDiaglog
+        diaglog = AlertDiaglog()
+        diaglog.setWindowModality(Qt.ApplicationModal)
+        diaglog.exec_()
+
+    def init_task_success_callback(self, index, asin, title, url):
+        # 参数为thread 信号里的4个参数
+        print(index, asin, title, url)
+        current_title = QTableWidgetItem(title)
+        self.table_widget.setItem(index, 1, current_title)
+
+        current_url = QTableWidgetItem(url)
+        self.table_widget.setItem(index, 2, current_url)
+        pass
+
+    def init_task_error_callback (self, index, asin, title, url):
+        print(index, asin, title, url)
+        pass
 
 
 if __name__ == '__main__':
